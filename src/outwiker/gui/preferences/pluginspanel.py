@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import os
 import wx
 import wx.adv
 
 from outwiker.core.application import Application
 from outwiker.gui.guiconfig import PluginsConfig
+from outwiker.core.system import getImagesDir
 from outwiker.core.system import getCurrentDir, getOS
 from outwiker.gui.preferences.baseprefpanel import BasePrefPanel
 
@@ -24,6 +26,16 @@ class PluginsPanel (BasePrefPanel):
     def __createGui(self):
         self.pluginsList = wx.CheckListBox(self, -1, style=wx.LB_SORT)
         self.pluginsList.SetMinSize((50, 20))
+
+        imagesDir = getImagesDir()
+
+        # Add a group
+        self.addGroupBtn = wx.BitmapButton(
+            self,
+            bitmap=wx.Bitmap(os.path.join(imagesDir, "add.png"))
+        )
+        self.addGroupBtn.SetToolTip(_(u"Add new plugin"))
+        self.addGroupBtn.Bind(wx.EVT_BUTTON, handler=self.__addPlugins)
 
         self.__downloadLink = wx.adv.HyperlinkCtrl(
             self,
@@ -69,6 +81,9 @@ class PluginsPanel (BasePrefPanel):
         self.mainSizer.Add(self.pluginsSizer,
                            flag=wx.ALL | wx.EXPAND,
                            border=2)
+        self.mainSizer.Add(self.addGroupBtn,
+                           flag=wx.ALL | wx.ALIGN_LEFT,
+                           border=2)
         self.mainSizer.Add(self.__downloadLink,
                            flag=wx.ALL | wx.ALIGN_LEFT,
                            border=2)
@@ -81,6 +96,8 @@ class PluginsPanel (BasePrefPanel):
     def Save(self):
         self.__controller.save()
 
+    def __addPlugins(self):
+        pass
 
 class PluginsController (object):
     """
