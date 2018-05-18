@@ -17,6 +17,7 @@ from outwiker.core.defines import (ICONS_FOLDER_NAME,
                                    STYLES_FOLDER_NAME,
                                    PLUGINS_FOLDER_NAME,
                                    SPELL_FOLDER_NAME,
+                                   TEMPLATES_FOLDER_NAME,
                                    )
 
 
@@ -196,6 +197,9 @@ def getImagesDir():
 
 def getTemplatesDir():
     return op.join(getCurrentDir(), STYLES_FOLDER_NAME)
+
+def getHTMLTemplatesDir():
+    return op.join(getCurrentDir(), TEMPLATES_FOLDER_NAME)
 
 
 def getExeFile():

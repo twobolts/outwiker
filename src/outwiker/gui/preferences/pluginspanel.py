@@ -3,20 +3,31 @@
 import os
 import wx
 import wx.adv
+import logging
+import json
 
+import outwiker
+import outwiker.core.packageversion as pv
 from outwiker.core.application import Application
 from outwiker.gui.guiconfig import PluginsConfig
 from outwiker.core.system import getImagesDir
+from outwiker.core.system import getHTMLTemplatesDir
+from outwiker.core.system import getPluginsDirList
 from outwiker.core.system import getCurrentDir, getOS
 from outwiker.gui.preferences.baseprefpanel import BasePrefPanel
+from outwiker.core.commands import MessageBox
+from outwiker.utilites.versionlist import VersionList
+from outwiker.utilites.textfile import readTextFile
 
+
+logger = logging.getLogger('pluginspanel')
 
 class PluginsPanel (BasePrefPanel):
     """
     Панель со списком установленных плагинов
     """
     def __init__(self, parent):
-        super(type(self), self).__init__(parent)
+        super(PluginsPanel, self).__init__(parent)
         self.__htmlMinWidth = 150
 
         self.__createGui()
@@ -96,8 +107,8 @@ class PluginsPanel (BasePrefPanel):
     def Save(self):
         self.__controller.save()
 
-    def __addPlugins(self):
-        pass
+    def __addPlugins(self, event):
+        self.__controller._threadFunc()
 
 class PluginsController (object):
     """
@@ -105,6 +116,7 @@ class PluginsController (object):
     """
     def __init__(self, pluginspanel):
         self.__owner = pluginspanel
+        self._application = Application
 
         # Т.к. под виндой к элементам CheckListBox нельзя
         # прикреплять пользовательские данные,
@@ -116,6 +128,8 @@ class PluginsController (object):
         self.__owner.Bind(wx.EVT_LISTBOX,
                           self.__onSelectItem,
                           self.__owner.pluginsList)
+
+        self.vl = VersionList()
 
     def __onSelectItem(self, event):
         htmlContent = u""
@@ -219,3 +233,99 @@ class PluginsController (object):
                 disabledList.append(self.__pluginsItems[self.__owner.pluginsList.GetString(itemindex)].name)
 
         return disabledList
+
+    def _threadFunc(self):
+        """
+        Thread function for silence updates checking.
+        Get info data from the  updates Urls
+
+        :param:
+            updateUrls - dict which key is plugin name or other ID,
+                value is update url
+            silenceMode - True or False
+
+        :raise:
+            EVT_UPDATE_VERSIONS event
+        """
+
+        # get update URLs from plugins.json and remove installed.
+        installerInfoDict = {x: y for x, y
+                             in self._getUrlsForInstaller().items()
+                             if x not in self._application.plugins.loadedPlugins}
+        installerInfoDict = self.vl.loadAppInfo(installerInfoDict)
+
+        logger.info(installerInfoDict)
+
+        # event = UpdateVersionsEvent(appInfoDict=appInfoDict,
+        #                             plugInfoDict=plugInfoDict,
+        #                             installerInfoDict=installerInfoDict,
+        #                             silenceMode=silenceMode)
+
+        # if self._application.mainWindow:
+        #     wx.PostEvent(self._application.mainWindow, event)
+
+    def _getUrlsForInstaller(self):
+
+        self._pluginsRepoPath = os.path.join(getHTMLTemplatesDir(), u'plugins.json')
+
+        # read data/plugins.json
+        self._installerPlugins = json.loads(
+            readTextFile(self._pluginsRepoPath))
+
+        updateUrls = {x['name']: x['url']
+                      for x in self._installerPlugins.values()}
+        return updateUrls
+
+    def install_plugin(self, name):
+        """
+        Install plugin by name.
+
+        :return: True if plugin was installed, otherwise False
+        """
+
+        getAppInfo = self.vl.getAppInfoFromUrl
+        getDownlodUrl = self.vl.getDownlodUrl
+
+        plugin_info = self._installerPlugins.get(name, None)
+        if plugin_info:
+
+            appInfo = getAppInfo(plugin_info["url"])
+            if not appInfo or not appInfo.versionsList:
+                MessageBox(_(u"The plugin description can't be downloaded. Please install plugin manually"),
+                           u"UpdateNotifier")
+                return False
+
+            api_required_version = appInfo.requirements.api_version
+            if pv.checkVersionAny(outwiker.core.__version__,
+                                  api_required_version) != 0:
+                MessageBox(_(u"The plugin required newer version of OutWiker. Please update OutWiker"),
+                           u"UpdateNotifier")
+                return False
+
+            # get link to latest version
+            url = getDownlodUrl(appInfo)
+            if not url:
+                MessageBox(_(u"The download link was not found in plugin description. Please install plugin manually"),
+                           u"UpdateNotifier")
+                return False
+
+            # getPluginsDirList[0] - папка рядом с запускаемым файлом, затем идут другие папки,
+            # если они есть
+            pluginPath = self.__deletedPlugins.get(
+                name,
+                os.path.join(getPluginsDirList()[-1], name.lower()))
+
+            logger.info(
+                'install_plugin: {url} {path}'.format(
+                    url=url, path=pluginPath))
+
+            rez = UpdatePlugin().update(url, pluginPath)
+
+            if rez:
+                self._application.plugins.load([os.path.dirname(pluginPath)])
+                self._updateDialog()
+            else:
+                MessageBox(
+                    _(u"Plugin was NOT Installed. Please update plugin manually"),
+                    u"UpdateNotifier")
+            return rez
