@@ -131,7 +131,7 @@ class PluginsPanel (BasePrefPanel):
         progressRunner = LongProcessRunner(
             self.__controller._threadFunc,
             self._application.mainWindow,
-            dialogTitle=u"Install Plufins",
+            dialogTitle=u"Install Plugins",
             dialogText=_(u"Check available Plugins..."))
 
         progressRunner.run(silenceMode=True)
@@ -424,6 +424,7 @@ class PluginsController (object):
             if rez:
                 self._application.plugins.load([os.path.dirname(pluginPath)])
                 self._updateDialog()
+                self.loadState()
             else:
                 MessageBox(
                     _(u"Plugin was NOT Installed. Please update plugin manually"),
