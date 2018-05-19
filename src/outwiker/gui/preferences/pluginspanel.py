@@ -12,17 +12,17 @@ import outwiker
 import outwiker.core.packageversion as pv
 from outwiker.core.application import Application
 from outwiker.gui.guiconfig import PluginsConfig
+from outwiker.gui.longprocessrunner import LongProcessRunner
+from outwiker.gui.testeddialog import TestedDialog
 from outwiker.core.system import getImagesDir
 from outwiker.core.system import getHTMLTemplatesDir
 from outwiker.core.system import getPluginsDirList
 from outwiker.core.system import getCurrentDir, getOS
 from outwiker.gui.preferences.baseprefpanel import BasePrefPanel
-from outwiker.core.commands import MessageBox
+from outwiker.core.commands import MessageBox, setStatusText
 from outwiker.core.pluginupdater import UpdatePlugin
 from outwiker.utilites.versionlist import VersionList
 from outwiker.utilites.textfile import readTextFile
-from outwiker.gui.testeddialog import TestedDialog
-
 
 logger = logging.getLogger('pluginspanel')
 
@@ -32,11 +32,13 @@ class PluginsPanel (BasePrefPanel):
     """
     def __init__(self, parent):
         super(PluginsPanel, self).__init__(parent)
+        self._application = Application
         self.__htmlMinWidth = 150
 
         self.__createGui()
-        self.__controller = PluginsController(self)
+        self.__controller = PluginsController(self, self._application)
         self.SetupScrolling()
+
 
     def __createGui(self):
         self.pluginsList = wx.CheckListBox(self, -1, style=wx.LB_SORT)
@@ -124,23 +126,30 @@ class PluginsPanel (BasePrefPanel):
         self.__controller.save()
 
     def __addPlugins(self, event):
+        setStatusText(_(u"Check for new versions..."))
+
+        progressRunner = LongProcessRunner(
+            self.__controller._threadFunc,
+            self._application.mainWindow,
+            dialogTitle=u"Install Plufins",
+            dialogText=_(u"Check available Plugins..."))
+
+        progressRunner.run(silenceMode=True)
+
         self.__controller._threadFunc()
 
     def __delPlugins(self, event):
-        logger.info('__delPlugins')
-
         selection_item = self.pluginsList.GetSelection()
-        logger.info(self.pluginsList.GetString(selection_item))
-
-        self.__controller.uninstall_plugin(self.pluginsList.GetString(selection_item))
+        plugin_name = self.pluginsList.GetString(selection_item)
+        self.__controller.uninstall_plugin(plugin_name)
 
 class PluginsController (object):
     """
     Контроллер, отвечающий за работу панели со списком плагинов
     """
-    def __init__(self, pluginspanel):
+    def __init__(self, pluginspanel, app):
         self.__owner = pluginspanel
-        self._application = Application
+        self._application = app
         # update dialog instance
         self._dialog = None
 
@@ -263,7 +272,7 @@ class PluginsController (object):
 
         return disabledList
 
-    def _threadFunc(self):
+    def _threadFunc(self, silenceMode=False):
         """
         Thread function for silence updates checking.
         Get info data from the  updates Urls
@@ -285,7 +294,8 @@ class PluginsController (object):
 
         #logger.info(installerInfoDict)
 
-        self._showUpdates(installerInfoDict)
+        if not silenceMode:
+            self._showUpdates(installerInfoDict)
         # event = UpdateVersionsEvent(appInfoDict=appInfoDict,
         #                             plugInfoDict=plugInfoDict,
         #                             installerInfoDict=installerInfoDict,
