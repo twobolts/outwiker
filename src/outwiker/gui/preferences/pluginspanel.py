@@ -17,6 +17,7 @@ from outwiker.core.system import getPluginsDirList
 from outwiker.core.system import getCurrentDir, getOS
 from outwiker.gui.preferences.baseprefpanel import BasePrefPanel
 from outwiker.core.commands import MessageBox
+from outwiker.core.pluginupdater import UpdatePlugin
 from outwiker.utilites.versionlist import VersionList
 from outwiker.utilites.textfile import readTextFile
 from outwiker.gui.testeddialog import TestedDialog
@@ -126,10 +127,12 @@ class PluginsController (object):
         # Ключ - имя плагина, оно же текст строки
         # Значение - экземпляр плагина
         self.__pluginsItems = {}
+        self.__deletedPlugins = {}
 
         self.__owner.Bind(wx.EVT_LISTBOX,
                           self.__onSelectItem,
                           self.__owner.pluginsList)
+        self._application.onLinkClick += self.__onLinkClick
 
         self.vl = VersionList()
         self._htmlTemplatePath = os.path.join(getHTMLTemplatesDir(),'plugin_install.html')
@@ -316,6 +319,30 @@ class PluginsController (object):
         HTMLContent = contentGenerator.render(templateData)
         return HTMLContent
 
+    def __onLinkClick(self, page, params):
+        '''
+        onLinkClick event handler. If params.link contain 'update:<PluginName>' when update <PluginName>
+        otherwise do nothing
+
+        :param page:
+            not use in this handler
+        :param params:
+            LinkClickParams instance
+        :return:
+            None
+        '''
+        logger.debug(u'__onLinkClick: {}'.format(params.__dict__))
+
+        import re
+
+        m = re.search(r'plugin_install:(\w+)', params.link)
+
+        if m:
+            plugin_name = m.group(1)
+
+            logger.info(u'Install plugin "{}"'.format(plugin_name))
+            self.install_plugin(plugin_name)
+
     def install_plugin(self, name):
         """
         Install plugin by name.
@@ -369,6 +396,14 @@ class PluginsController (object):
                     _(u"Plugin was NOT Installed. Please update plugin manually"),
                     u"UpdateNotifier")
             return rez
+
+    def _updateDialog(self):
+        """
+        Update content on the current opened update dialog.
+        """
+        if self._dialog and self._dialog.IsModal():
+            self._dialog.EndModal(wx.ID_OK)
+            self._threadFunc()
 
 class UpdateDialog(TestedDialog):
     """Dialog to show new plugins"""
