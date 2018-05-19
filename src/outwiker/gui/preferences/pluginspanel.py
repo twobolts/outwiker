@@ -6,6 +6,7 @@ import wx.adv
 import logging
 import json
 import html
+import shutil
 
 import outwiker
 import outwiker.core.packageversion as pv
@@ -43,13 +44,21 @@ class PluginsPanel (BasePrefPanel):
 
         imagesDir = getImagesDir()
 
-        # Add a group
+        # Add a plugin
         self.addGroupBtn = wx.BitmapButton(
             self,
             bitmap=wx.Bitmap(os.path.join(imagesDir, "add.png"))
         )
         self.addGroupBtn.SetToolTip(_(u"Add new plugin"))
         self.addGroupBtn.Bind(wx.EVT_BUTTON, handler=self.__addPlugins)
+
+        # remove the plugin
+        self.delGroupBtn = wx.BitmapButton(
+            self,
+            bitmap=wx.Bitmap(os.path.join(imagesDir, "delete.png"))
+        )
+        self.delGroupBtn.SetToolTip(_(u"Delete the plugin"))
+        self.delGroupBtn.Bind(wx.EVT_BUTTON, handler=self.__delPlugins)
 
         self.__downloadLink = wx.adv.HyperlinkCtrl(
             self,
@@ -92,10 +101,14 @@ class PluginsPanel (BasePrefPanel):
         self.pluginsSizer.Add(self.pluginsList, flag=wx.EXPAND)
         self.pluginsSizer.Add(self.__blankPanel, flag=wx.EXPAND)
 
+        self.buttonSizer = wx.FlexGridSizer(cols=2)
+        self.buttonSizer.Add(self.addGroupBtn)
+        self.buttonSizer.Add(self.delGroupBtn)
+
         self.mainSizer.Add(self.pluginsSizer,
                            flag=wx.ALL | wx.EXPAND,
                            border=2)
-        self.mainSizer.Add(self.addGroupBtn,
+        self.mainSizer.Add(self.buttonSizer,
                            flag=wx.ALL | wx.ALIGN_LEFT,
                            border=2)
         self.mainSizer.Add(self.__downloadLink,
@@ -113,6 +126,14 @@ class PluginsPanel (BasePrefPanel):
     def __addPlugins(self, event):
         self.__controller._threadFunc()
 
+    def __delPlugins(self, event):
+        logger.info('__delPlugins')
+
+        selection_item = self.pluginsList.GetSelection()
+        logger.info(self.pluginsList.GetString(selection_item))
+
+        self.__controller.uninstall_plugin(self.pluginsList.GetString(selection_item))
+
 class PluginsController (object):
     """
     Контроллер, отвечающий за работу панели со списком плагинов
@@ -120,6 +141,8 @@ class PluginsController (object):
     def __init__(self, pluginspanel):
         self.__owner = pluginspanel
         self._application = Application
+        # update dialog instance
+        self._dialog = None
 
         # Т.к. под виндой к элементам CheckListBox нельзя
         # прикреплять пользовательские данные,
@@ -404,6 +427,50 @@ class PluginsController (object):
         if self._dialog and self._dialog.IsModal():
             self._dialog.EndModal(wx.ID_OK)
             self._threadFunc()
+
+    def uninstall_plugin(self, name):
+        """
+        remove plugin from application._plugins and delete plugin folder from disk
+        :param name:
+        :return:
+            True if plugin was uninstalled successful, otherwise False
+        """
+        def del_msg(function, path, excinfo):
+            "Error handler for shutil.rmtree"
+            MessageBox(_("Plugin's folder can't be deleted. Please delete the following path: \n {}").format(path))
+
+        rez = True
+
+        plugin = self._application.plugins.loadedPlugins.get(name, None)
+        if not plugin:
+            return
+
+        plugin_path = plugin.pluginPath
+
+        logger.info(
+            'uninstall_plugin: {name} {path}'.format(
+                name=name, path=plugin_path))
+
+        # remove plugin from applications._plugins
+        rez = rez and self._application.plugins.remove(name)
+
+        logger.info('uninstall_plugin: remove plugin {}'.format(rez))
+
+        # remove plugin folder or remove symbolic link to it.
+        if rez:
+            if os.path.islink(plugin_path):
+                os.unlink(plugin_path)
+            else:
+                shutil.rmtree(plugin_path,
+                              onerror=lambda f, path, i:
+                              MessageBox(
+                                  _("Plugin's folder can't be deleted. Please delete the following path: \n {}"
+                                    ).format(path)))
+
+            # Python can't unimport file, so save the deleted plugin
+            # If user re-installs it we just install it in same directory
+            self.__deletedPlugins[name] = plugin_path
+        return rez
 
 class UpdateDialog(TestedDialog):
     """Dialog to show new plugins"""
