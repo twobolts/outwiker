@@ -5,6 +5,7 @@ import wx
 import wx.adv
 import logging
 import json
+import html
 
 import outwiker
 import outwiker.core.packageversion as pv
@@ -18,6 +19,7 @@ from outwiker.gui.preferences.baseprefpanel import BasePrefPanel
 from outwiker.core.commands import MessageBox
 from outwiker.utilites.versionlist import VersionList
 from outwiker.utilites.textfile import readTextFile
+from outwiker.gui.testeddialog import TestedDialog
 
 
 logger = logging.getLogger('pluginspanel')
@@ -130,6 +132,7 @@ class PluginsController (object):
                           self.__owner.pluginsList)
 
         self.vl = VersionList()
+        self._htmlTemplatePath = os.path.join(getHTMLTemplatesDir(),'plugin_install.html')
 
     def __onSelectItem(self, event):
         htmlContent = u""
@@ -254,8 +257,9 @@ class PluginsController (object):
                              if x not in self._application.plugins.loadedPlugins}
         installerInfoDict = self.vl.loadAppInfo(installerInfoDict)
 
-        logger.info(installerInfoDict)
+        #logger.info(installerInfoDict)
 
+        self._showUpdates(installerInfoDict)
         # event = UpdateVersionsEvent(appInfoDict=appInfoDict,
         #                             plugInfoDict=plugInfoDict,
         #                             installerInfoDict=installerInfoDict,
@@ -275,6 +279,42 @@ class PluginsController (object):
         updateUrls = {x['name']: x['url']
                       for x in self._installerPlugins.values()}
         return updateUrls
+
+    def _showUpdates(self, installerInfoDict):
+        '''
+        Show dialog with update information.
+        '''
+        #setStatusText(u"")
+
+        HTMLContent = self.createHTMLContent(installerInfoDict)
+
+        with UpdateDialog(self._application.mainWindow) as updateDialog:
+            self._dialog = updateDialog
+            updateDialog.setContent(HTMLContent, getHTMLTemplatesDir())
+            updateDialog.ShowModal()
+
+    def createHTMLContent(self, installerInfoDict):
+        template = readTextFile(self._htmlTemplatePath)
+
+        logger.info(getImagesDir())
+
+        templateData = {
+            u'installerInfoDict': installerInfoDict,
+            u'str_outwiker_current_version': _(u'Installed OutWiker version'),
+            u'str_outwiker_latest_stable_version': _(u'Latest stable OutWiker version'),
+            u'str_outwiker_latest_unstable_version': _(u'Latest unstable OutWiker version'),
+            u'str_version_history': _(u'Version history'),
+            u'str_more_info': _(u'More info'),
+            u'str_update': _(u'Update'),
+            u'str_install': _(u'Install'),
+            u'str_uninstall': _(u'Uninstall'),
+            u'data_path': getImagesDir(),
+            u'escape': html.escape,
+        }
+
+        contentGenerator = ContentGenerator(template)
+        HTMLContent = contentGenerator.render(templateData)
+        return HTMLContent
 
     def install_plugin(self, name):
         """
@@ -329,3 +369,55 @@ class PluginsController (object):
                     _(u"Plugin was NOT Installed. Please update plugin manually"),
                     u"UpdateNotifier")
             return rez
+
+class UpdateDialog(TestedDialog):
+    """Dialog to show new plugins"""
+
+    def __init__(self, parent):
+        super(UpdateDialog, self).__init__(
+            parent,
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+
+        self.SetSize((750, 500))
+        self.SetTitle(_(u"Choose plugins for installation"))
+        self._createGui()
+
+    def setContent(self, HTMLContent, basepath):
+        self._htmlRender.SetPage(HTMLContent, basepath)
+
+    def _createGui(self):
+        self._mainSizer = wx.FlexGridSizer(cols=1)
+        self._mainSizer.AddGrowableCol(0)
+        self._mainSizer.AddGrowableRow(0)
+
+        self._htmlRender = getOS().getHtmlRender(self)
+        self._mainSizer.Add(self._htmlRender,
+                            1,
+                            wx.EXPAND | wx.ALL,
+                            border=2)
+
+        buttonsSizer = self.CreateButtonSizer(wx.OK)
+        self._mainSizer.Add(buttonsSizer,
+                            1,
+                            wx.ALIGN_RIGHT | wx.ALL,
+                            border=2)
+
+        self.SetSizer(self._mainSizer)
+        self.Layout()
+
+
+class ContentGenerator(object):
+    def __init__(self, templateStr):
+        self._templateStr = templateStr
+
+    def render(self, data):
+        '''
+        data - dictionary for template substitution.
+        '''
+        from outwiker.libs.jinja2 import Environment
+
+        env = Environment()
+        templateObj = env.from_string(self._templateStr)
+
+        return templateObj.render(**data)
+
