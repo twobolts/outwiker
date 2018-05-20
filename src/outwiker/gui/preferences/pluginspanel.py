@@ -39,6 +39,8 @@ class PluginsPanel (BasePrefPanel):
         self.__controller = PluginsController(self, self._application)
         self.SetupScrolling()
 
+        self._application.onLinkClick += self.__onLinkClick
+
 
     def __createGui(self):
         self.pluginsList = wx.CheckListBox(self, -1, style=wx.LB_SORT)
@@ -144,6 +146,31 @@ class PluginsPanel (BasePrefPanel):
             plugin_name = self.pluginsList.GetString(selection_item)
             self.__controller.uninstall_plugin(plugin_name)
 
+    def __onLinkClick(self, page, params):
+        '''
+        onLinkClick event handler. If params.link contain 'update:<PluginName>' when update <PluginName>
+        otherwise do nothing
+
+        :param page:
+            not use in this handler
+        :param params:
+            LinkClickParams instance
+        :return:
+            None
+        '''
+        logger.debug(u'__onLinkClick: {}'.format(params.__dict__))
+
+        import re
+        m = re.search(r'plugin_install:(\w+)', params.link)
+
+        if m:
+            plugin_name = m.group(1)
+            logger.info(u'Install plugin "{}"'.format(plugin_name))
+            self.__controller.install_plugin(plugin_name)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._application.onLinkClick -= self.__onLinkClick
+
 class PluginsController (object):
     """
     Контроллер, отвечающий за работу панели со списком плагинов
@@ -166,7 +193,7 @@ class PluginsController (object):
         self.__owner.Bind(wx.EVT_LISTBOX,
                           self.__onSelectItem,
                           self.__owner.pluginsList)
-        self._application.onLinkClick += self.__onLinkClick
+
 
         self.vl = VersionList()
         self._htmlTemplatePath = os.path.join(getHTMLTemplatesDir(),'plugin_install.html')
@@ -289,22 +316,14 @@ class PluginsController (object):
         """
 
         # get update URLs from plugins.json and remove installed.
-        installerInfoDict = {x: y for x, y
+        pluginsUrls = {x: y for x, y
                              in self._getUrlsForInstaller().items()
                              if x not in self._application.plugins.loadedPlugins}
-        installerInfoDict = self.vl.loadAppInfo(installerInfoDict)
-
-        #logger.info(installerInfoDict)
+        installerInfoDict = self.vl.loadAppInfo(pluginsUrls)
 
         if not silenceMode:
             self._showUpdates(installerInfoDict)
-        # event = UpdateVersionsEvent(appInfoDict=appInfoDict,
-        #                             plugInfoDict=plugInfoDict,
-        #                             installerInfoDict=installerInfoDict,
-        #                             silenceMode=silenceMode)
 
-        # if self._application.mainWindow:
-        #     wx.PostEvent(self._application.mainWindow, event)
 
     def _getUrlsForInstaller(self):
 
@@ -353,30 +372,6 @@ class PluginsController (object):
         contentGenerator = ContentGenerator(template)
         HTMLContent = contentGenerator.render(templateData)
         return HTMLContent
-
-    def __onLinkClick(self, page, params):
-        '''
-        onLinkClick event handler. If params.link contain 'update:<PluginName>' when update <PluginName>
-        otherwise do nothing
-
-        :param page:
-            not use in this handler
-        :param params:
-            LinkClickParams instance
-        :return:
-            None
-        '''
-        logger.debug(u'__onLinkClick: {}'.format(params.__dict__))
-
-        import re
-
-        m = re.search(r'plugin_install:(\w+)', params.link)
-
-        if m:
-            plugin_name = m.group(1)
-
-            logger.info(u'Install plugin "{}"'.format(plugin_name))
-            self.install_plugin(plugin_name)
 
     def install_plugin(self, name):
         """
