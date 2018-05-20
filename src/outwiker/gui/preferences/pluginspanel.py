@@ -140,8 +140,9 @@ class PluginsPanel (BasePrefPanel):
 
     def __delPlugins(self, event):
         selection_item = self.pluginsList.GetSelection()
-        plugin_name = self.pluginsList.GetString(selection_item)
-        self.__controller.uninstall_plugin(plugin_name)
+        if selection_item is not None:
+            plugin_name = self.pluginsList.GetString(selection_item)
+            self.__controller.uninstall_plugin(plugin_name)
 
 class PluginsController (object):
     """
@@ -160,6 +161,7 @@ class PluginsController (object):
         # Значение - экземпляр плагина
         self.__pluginsItems = {}
         self.__deletedPlugins = {}
+        self._installerPlugins = {}
 
         self.__owner.Bind(wx.EVT_LISTBOX,
                           self.__onSelectItem,
@@ -221,7 +223,7 @@ class PluginsController (object):
         return result
 
     def loadState(self):
-        self.__pluginsItems = {}
+        self.__pluginsItems.clear()
         self.__owner.pluginsList.Clear()
         self.__appendEnabledPlugins()
         self.__appendDisabledPlugins()
@@ -481,6 +483,8 @@ class PluginsController (object):
             # Python can't unimport file, so save the deleted plugin
             # If user re-installs it we just install it in same directory
             self.__deletedPlugins[name] = plugin_path
+
+            self.loadState()
         return rez
 
 class UpdateDialog(TestedDialog):
